@@ -9,16 +9,16 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SegmentHasher {
+public class SegmentHashUtil {
 
-    public static List<SegmentHasherResult> calculateHashes(@NotNull List<MemorySegment> fileByteSegments) throws NoSuchAlgorithmException {
+    public static List<DiskSegment> calculateHashes(@NotNull List<MemorySegment> fileByteSegments) throws NoSuchAlgorithmException {
         MessageDigest md5 = MessageDigest.getInstance("SHA-256");
-        List<SegmentHasherResult> results = new ArrayList<>(fileByteSegments.size());
+        List<DiskSegment> results = new ArrayList<>(fileByteSegments.size());
         for (MemorySegment fileByteSegment : fileByteSegments) {
             md5.update(fileByteSegment.toArray(ValueLayout.OfByte.JAVA_BYTE));
             byte[] digest = md5.digest();
             String hash = bytesToHex(digest);
-            results.add(new SegmentHasherResult(hash, fileByteSegment));
+            results.add(new DiskSegment(hash, fileByteSegment));
         }
         return results;
     }

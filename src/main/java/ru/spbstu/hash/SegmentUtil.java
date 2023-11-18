@@ -9,11 +9,11 @@ import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.List;
 
-public class FileSegmentSlicer {
+public class SegmentUtil {
 
     private static final int SEGMENT_SIZE_IN_BYTES = 4;
 
-    private FileSegmentSlicer() {}
+    private SegmentUtil() {}
 
     public static List<MemorySegment> getSegmentsOfBytes(@NotNull MultipartFile file) throws IOException {
         int fileSegmentsCount = getFileSegmentsCount(file.getSize());

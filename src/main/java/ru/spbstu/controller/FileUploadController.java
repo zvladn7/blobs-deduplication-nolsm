@@ -6,9 +6,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import ru.spbstu.model.FileInfo;
-import ru.spbstu.service.SegmentStorageService;
+import ru.spbstu.service.StorageService;
 
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
@@ -16,11 +15,11 @@ import java.util.List;
 public class FileUploadController {
 
     @Autowired
-    private SegmentStorageService segmentStorageService;
+    private StorageService storageService;
 
     @PostMapping("/api/files/uploadFile")
     public FileInfo uploadFile(@RequestParam("file")MultipartFile file) {
-        segmentStorageService.save(file);
+        storageService.save(file);
         return null; // TODO:
     }
 

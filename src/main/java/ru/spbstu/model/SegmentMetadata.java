@@ -1,12 +1,5 @@
 package ru.spbstu.model;
 
-import com.ctc.wstx.util.StringUtil;
-import lombok.AllArgsConstructor;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import lombok.ToString;
 import org.jetbrains.annotations.NotNull;
 import org.thymeleaf.util.StringUtils;
 
@@ -19,12 +12,6 @@ import javax.persistence.Index;
 import javax.persistence.Table;
 
 @Entity
-@NoArgsConstructor
-@AllArgsConstructor
-@Setter
-@Getter
-@EqualsAndHashCode
-@ToString
 @Table(
         name = "SegmentsMetadata",
         indexes = {
@@ -55,6 +42,20 @@ public class SegmentMetadata {
     @Column(name = "referenceCount", nullable = false, updatable = true)
     private int referenceCount;
 
+    public SegmentMetadata() {}
+
+    public SegmentMetadata(int id,
+                           @NotNull String hash,
+                           @NotNull String fileName,
+                           long offset,
+                           int referenceCount) {
+        this.id = id;
+        this.hash = hash;
+        this.fileName = fileName;
+        this.offset = offset;
+        this.referenceCount = referenceCount;
+    }
+
     public SegmentMetadata(@NotNull String hash,
                            @NotNull String fileName,
                            long offset,
@@ -76,4 +77,56 @@ public class SegmentMetadata {
         return StringUtils.equals(fileName, FILE_UNKNOWN_NAME) && offset == FILE_UNKNOWN_OFFSET;
     }
 
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    @NotNull
+    public String getHash() {
+        return hash;
+    }
+
+    public void setHash(@NotNull String hash) {
+        this.hash = hash;
+    }
+
+    @NotNull
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(@NotNull String fileName) {
+        this.fileName = fileName;
+    }
+
+    public long getOffset() {
+        return offset;
+    }
+
+    public void setOffset(long offset) {
+        this.offset = offset;
+    }
+
+    public int getReferenceCount() {
+        return referenceCount;
+    }
+
+    public void setReferenceCount(int referenceCount) {
+        this.referenceCount = referenceCount;
+    }
+
+    @Override
+    public String toString() {
+        return "SegmentMetadata{" +
+                "id=" + id +
+                ", hash='" + hash + '\'' +
+                ", fileName='" + fileName + '\'' +
+                ", offset=" + offset +
+                ", referenceCount=" + referenceCount +
+                '}';
+    }
 }

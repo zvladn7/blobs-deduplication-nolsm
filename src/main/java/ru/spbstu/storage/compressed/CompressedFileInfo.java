@@ -1,4 +1,4 @@
-package ru.spbstu.storage;
+package ru.spbstu.storage.compressed;
 
 import org.jetbrains.annotations.NotNull;
 
