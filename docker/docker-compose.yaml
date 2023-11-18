@@ -1,0 +1,13 @@
+version: '3.1'
+
+services:
+
+  postgres-deduplication:
+    image: postgres:11
+    container_name: postgres-antispam
+    ports:
+      - 5434:5432
+    environment:
+      POSTGRES_DB: deduplication
+      POSTGRES_USER: deduplication
+      POSTGRES_PASSWORD: deduplication
