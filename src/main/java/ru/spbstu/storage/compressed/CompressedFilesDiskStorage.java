@@ -2,8 +2,9 @@ package ru.spbstu.storage.compressed;
 
 import org.jetbrains.annotations.NotNull;
 import ru.spbstu.exception.StorageException;
-import ru.spbstu.hash.DiskSegment;
+import ru.spbstu.hash.MemorySegmentWithHash;
 import ru.spbstu.model.SegmentMetadata;
+import ru.spbstu.storage.util.DiskStorageUtil;
 
 import java.io.IOException;
 import java.lang.foreign.Arena;
@@ -19,29 +20,17 @@ import java.util.Map;
 
 public class CompressedFilesDiskStorage {
 
-    private static final String COMPRESSED_FILE_POSTFIX = ".bin";
-
-
-    private final Path compressedDataPath;
-    private final Path decompressedDataPath;
-
-
-    public CompressedFilesDiskStorage() {
-        this.compressedDataPath = null;
-        this.decompressedDataPath = null;
-    }
-
     /**
      * compressed file format:
      * |segment size in bytes|segments count|segment0|segment1|segment2|...
      */
     public void saveCompressedDataFile(@NotNull String fileName,
-                                       @NotNull List<DiskSegment> diskSegments,
+                                       @NotNull List<MemorySegmentWithHash> memorySegmentWithHashes,
                                        @NotNull Map<String, SegmentMetadata> segmentsToUpdateInDBMap) throws IOException {
-        int compressedDataSize = diskSegments.size() * Integer.BYTES;
+        int compressedDataSize = memorySegmentWithHashes.size() * Integer.BYTES;
 
         try (FileChannel fileChannel = FileChannel.open(
-                compressedDataPath.resolve(fileName + COMPRESSED_FILE_POSTFIX),
+                DiskStorageUtil.ofCompressed(fileName),
                 StandardOpenOption.WRITE,
                 StandardOpenOption.READ,
                 StandardOpenOption.CREATE);
@@ -55,23 +44,23 @@ public class CompressedFilesDiskStorage {
             );
 
             int dataOffset = 0;
-            long segmentSizeInBytes = diskSegments.get(0).getMemorySegment().byteSize();
+            long segmentSizeInBytes = memorySegmentWithHashes.get(0).getMemorySegment().byteSize();
             fileSegment.set(ValueLayout.JAVA_LONG_UNALIGNED, dataOffset, segmentSizeInBytes);
             dataOffset += Long.BYTES;
 
-            int segmentsCount = diskSegments.size();
+            int segmentsCount = memorySegmentWithHashes.size();
             fileSegment.set(ValueLayout.JAVA_INT_UNALIGNED, dataOffset, segmentsCount);
             dataOffset += Integer.BYTES;
 
-            long fileSizeInBytes = diskSegments.stream()
-                    .map(DiskSegment::getMemorySegment)
+            long fileSizeInBytes = memorySegmentWithHashes.stream()
+                    .map(MemorySegmentWithHash::getMemorySegment)
                     .map(MemorySegment::byteSize)
                     .mapToLong(Long::longValue)
                     .sum();
             fileSegment.set(ValueLayout.JAVA_LONG_UNALIGNED, dataOffset, fileSizeInBytes);
             dataOffset += Long.BYTES;
 
-            for (DiskSegment hasherResult : diskSegments) {
+            for (MemorySegmentWithHash hasherResult : memorySegmentWithHashes) {
                 String hash = hasherResult.getHash();
                 SegmentMetadata metadata = segmentsToUpdateInDBMap.get(hash);
                 int segmentId = metadata.getId();
@@ -82,7 +71,7 @@ public class CompressedFilesDiskStorage {
     }
 
     public CompressedFileInfo readCompressedFileInfo(@NotNull String fileName) throws IOException {
-        Path compressedFilePath = compressedDataPath.resolve(fileName + COMPRESSED_FILE_POSTFIX);
+        Path compressedFilePath = DiskStorageUtil.ofCompressed(fileName);
         try (FileChannel fileChannel = FileChannel.open(compressedFilePath, StandardOpenOption.READ);
              Arena arena = Arena.ofConfined();
         ) {

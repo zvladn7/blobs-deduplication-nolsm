@@ -1,118 +1,94 @@
 package ru.spbstu.service;
 
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 import ru.spbstu.exception.StorageException;
+import ru.spbstu.hash.HashType;
 import ru.spbstu.hash.SegmentUtil;
 import ru.spbstu.hash.SegmentHashUtil;
-import ru.spbstu.hash.DiskSegment;
+import ru.spbstu.hash.MemorySegmentWithHash;
 import ru.spbstu.model.SegmentMetadata;
-import ru.spbstu.repository.SegmentRepository;
-import ru.spbstu.storage.segments.SegmentsDiskStorage;
+import ru.spbstu.model.SegmentsMetadataToStore;
 
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
+import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Component
 public class StorageService {
 
-    private final SegmentRepository segmentRepository;
-    private final SegmentsDiskStorage segmentsDiskStorage;
+    private static final Logger LOGGER = LoggerFactory.getLogger(StorageService.class);
 
-    public StorageService(SegmentRepository segmentRepository,
-                          SegmentsDiskStorage segmentsDiskStorage) {
-        this.segmentRepository = segmentRepository;
-        this.segmentsDiskStorage = segmentsDiskStorage;
+    private final SegmentMetadataService segmentMetadataService;
+    private final SegmentStorageService segmentStorageService;
+    private final CompressedStorageService compressedStorageService;
+
+    public StorageService(@NotNull SegmentMetadataService segmentMetadataService,
+                          @NotNull SegmentStorageService segmentStorageService,
+                          @NotNull CompressedStorageService compressedStorageService) {
+        this.segmentMetadataService = Objects.requireNonNull(segmentMetadataService);
+        this.segmentStorageService = Objects.requireNonNull(segmentStorageService);
+        this.compressedStorageService = Objects.requireNonNull(compressedStorageService);
     }
 
-    public void save(@NotNull MultipartFile file) {
-        final List<MemorySegment> fileSegments = getFileSegments(file);
-        final List<DiskSegment> diskSegments = getHashToBytesSegmentMap(fileSegments, file.getName());
-        final Map<String, MemorySegment> hashToBytesSegmentMap
-                = diskSegments.stream()
-                .collect(Collectors.toMap(
-                        DiskSegment::getHash,
-                        DiskSegment::getMemorySegment,
-                        (m1, m2) -> m1,
-                        () -> HashMap.newHashMap(diskSegments.size())
-                ));
-        final Map<String, SegmentMetadata> segmentsFromDBMap = getAlreadyExistSegmentsFromDB(hashToBytesSegmentMap);
+    public void save(@NotNull Path path,
+                     @NotNull HashType hashType) {
+        // Разбили файл на сегменты и посчитали хеш для каждого сегмента
+        final List<MemorySegmentWithHash> memorySegmentWithHashes = getHashToBytesSegmentMap(path, hashType);
 
-        Map<String, SegmentMetadata> segmentsToUpdateInDBMap
-                = segmentsDiskStorage.calculateSegmentsToUpdateInDB(hashToBytesSegmentMap.keySet(), segmentsFromDBMap);
+        // Получили сегменты, которые уже есть на диске + которых еще не было на диске (то есть новые, уникальные сегменты)
+        SegmentsMetadataToStore segmentsMetadataToStore = segmentMetadataService.getSegmentsMetadataToStore(memorySegmentWithHashes);
+        logSegmentsToStore(segmentsMetadataToStore);
 
-        segmentsToUpdateInDBMap = saveSegmentsOnDisk(segmentsToUpdateInDBMap, hashToBytesSegmentMap);
+        // Записали новые сегменты на диск
+        Map<String, SegmentMetadata> updatedNewSegmentsMetadataMap
+                = segmentStorageService.saveNewSegmentsOnDisk(segmentsMetadataToStore, memorySegmentWithHashes);
+        segmentsMetadataToStore = segmentsMetadataToStore.updateNewSegmentsMap(updatedNewSegmentsMetadataMap);
 
-        segmentRepository.saveAllAndFlush(segmentsToUpdateInDBMap.values());
+        // Записали мета-данные о новых сегментах на диск
+        segmentMetadataService.create(segmentsMetadataToStore.getNewSegmentsMap().values());
+        // Обновили мета-данные по уже существующим
+        segmentMetadataService.updateReferenceCount(segmentsMetadataToStore.getAlreadyExistedSegmentsMap().values());
 
-//        segmentsDiskStorage.saveCompressedDataFile(file.getName(), segmentHasherResults, segmentsToUpdateInDBMap);
+        // Записали сжатый файл на диск.
+        compressedStorageService.save(path, memorySegmentWithHashes, segmentsMetadataToStore.getAllHashToMetadataMap());
     }
 
-    private List<MemorySegment> getFileSegments(@NotNull MultipartFile file) {
+    private List<MemorySegment> getFileSegments(@NotNull Path path) {
         try {
-            return SegmentUtil.getSegmentsOfBytes(file);
+            return SegmentUtil.getSegmentsOfBytes(path);
         } catch (IOException e) {
-            throw new StorageException(String.format("Failed to get file segments, file: %s", file.getName()));
+            throw new StorageException(String.format("Failed to get file segments, file: %s", path.getFileName()));
         }
     }
 
-    private List<DiskSegment> getHashToBytesSegmentMap(@NotNull List<MemorySegment> segmentsOfBytes,
-                                                       @NotNull String fileName) {
+    private List<MemorySegmentWithHash> getHashToBytesSegmentMap(@NotNull Path path,
+                                                                 @NotNull HashType hashType) {
+        List<MemorySegment> segmentsOfBytes = getFileSegments(path);
         try {
-            return SegmentHashUtil.calculateHashes(segmentsOfBytes);
+            return SegmentHashUtil.calculateHashes(segmentsOfBytes, hashType);
         } catch (NoSuchAlgorithmException e) {
-            throw new StorageException(String.format("Failed to get hash of segments, file: %s", fileName));
+            throw new StorageException("Failed to get hash of segments");
         }
     }
 
-    private Map<String, SegmentMetadata> getAlreadyExistSegmentsFromDB(@NotNull Map<String, MemorySegment> hashToBytesSegmentMap) {
-        return segmentRepository.findAllById(hashToBytesSegmentMap.keySet()).stream()
-                .collect(Collectors.toMap(
-                        SegmentMetadata::getHash,
-                        Function.identity(),
-                        (m1, m2) -> m1,
-                        HashMap::new
-                ));
-    }
-
-    private Map<String, SegmentMetadata> saveSegmentsOnDisk(@NotNull Map<String, SegmentMetadata> segmentsToUpdateInDBMap,
-                                                            @NotNull Map<String, MemorySegment> hashToBytesSegmentMap) {
-        List<SegmentMetadata> segmentsToWriteOnDisk = segmentsToUpdateInDBMap.values().stream()
-                .filter(SegmentMetadata::isUnknown)
-                .toList();
-
-        Map<String, SegmentMetadata> hashToSegmentStoredOnDisk;
-        try {
-            hashToSegmentStoredOnDisk = segmentsDiskStorage.saveSegmentsOnDisk(segmentsToWriteOnDisk, hashToBytesSegmentMap);
-        } catch (IOException e) {
-            throw new StorageException("Fail to store segments on disk");
-        }
-
-        return segmentsToUpdateInDBMap.entrySet().stream()
-                .map(entry -> {
-                    String hash = entry.getKey();
-                    SegmentMetadata metadata = entry.getValue();
-                    if (!metadata.isUnknown()) {
-                        return entry;
-                    }
-                    SegmentMetadata newMetadata = hashToSegmentStoredOnDisk.get(hash);
-                    if (newMetadata == null) {
-                        throw new StorageException("");
-                    }
-                    entry.setValue(newMetadata);
-                    return entry;
-                })
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        Map.Entry::getValue
-                ));
+    private static void logSegmentsToStore(@NotNull SegmentsMetadataToStore segmentsMetadataToStore) {
+        Objects.requireNonNull(segmentsMetadataToStore);
+        LOGGER.info("duplicate segments: {}", segmentsMetadataToStore.getDuplicateSegments());
+        LOGGER.info("reused from db segments: {}", segmentsMetadataToStore.getReusedFromDBSegments());
+        Map<String, SegmentMetadata> newSegmentsMap = segmentsMetadataToStore.getNewSegmentsMap();
+        LOGGER.info("new segments: [{}}", newSegmentsMap.keySet());
+        Map<String, SegmentMetadata> alreadyExistedSegmentsMap = segmentsMetadataToStore.getAlreadyExistedSegmentsMap();
+        LOGGER.info("new segments: [{}}", alreadyExistedSegmentsMap.keySet());
     }
 
 }

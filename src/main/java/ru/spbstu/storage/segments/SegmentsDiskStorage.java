@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Component
 public class SegmentsDiskStorage {
@@ -72,8 +73,8 @@ public class SegmentsDiskStorage {
         return Collections.unmodifiableMap(results);
     }
 
-    public Map<String, SegmentMetadata> saveSegmentsOnDisk(@NotNull Collection<SegmentMetadata> segmentMetadatas,
-                                                           @NotNull Map<String, MemorySegment> hashToBytesSegmentMap) throws IOException {
+    public Map<String, SegmentMetadata> saveNewSegmentsOnDisk(@NotNull Collection<SegmentMetadata> segmentMetadatas,
+                                                              @NotNull Map<String, MemorySegment> hashToBytesSegmentMap) throws IOException {
         try {
             Files.createFile(INDEX);
         } catch (FileAlreadyExistsException ignored) {
@@ -116,7 +117,7 @@ public class SegmentsDiskStorage {
                 MemorySegment.copy(nextSegment, 0, fileSegment, 0, nextSegment.byteSize());
 
                 segmentMetadata.setFileName(newFileName);
-                segmentMetadata.setOffset(dataOffset);
+                segmentMetadata.setFileOffset(dataOffset);
                 result.put(hash, segmentMetadata);
 
                 dataOffset += nextSegment.byteSize();
@@ -143,42 +144,7 @@ public class SegmentsDiskStorage {
         return result;
     }
 
-
-    public Map<String, SegmentMetadata> calculateSegmentsToUpdateInDB(@NotNull Collection<String> fileHashes,
-                                                                      @NotNull Map<String, SegmentMetadata> segmentsFromDBMap) {
-        Map<String, SegmentMetadata> segmentsFromCurrentFileMap = HashMap.newHashMap(fileHashes.size());
-        Map<String, SegmentMetadata> segmentsToSaveMap = HashMap.newHashMap(fileHashes.size());
-
-        int reusedFromDBSegments = 0;
-        int duplicateSegments = 0;
-        for (String segmentHash : fileHashes) {
-            SegmentMetadata segmentFromDB = segmentsFromDBMap.get(segmentHash);
-            // Сегмент уже сохранен на диске
-            if (segmentFromDB != null) {
-                segmentsToSaveMap.put(segmentHash, new SegmentMetadata(segmentFromDB.getId(), segmentHash, segmentFromDB.getFileName(),
-                        segmentFromDB.getOffset(), segmentFromDB.getReferenceCount() + 1));
-                reusedFromDBSegments++;
-                duplicateSegments++;
-                continue;
-            }
-
-            SegmentMetadata segmentFromCurrentFile = segmentsFromCurrentFileMap.get(segmentHash);
-            if (segmentFromCurrentFile != null) {
-                segmentFromCurrentFile = new SegmentMetadata(segmentHash, segmentFromCurrentFile.getFileName(),
-                        segmentFromCurrentFile.getOffset(), segmentFromCurrentFile.getReferenceCount() + 1);
-                segmentsToSaveMap.put(segmentHash, segmentFromCurrentFile);
-                segmentsFromCurrentFileMap.put(segmentHash, segmentFromCurrentFile);
-                duplicateSegments++;
-                continue;
-            }
-
-            segmentsToSaveMap.put(segmentHash, new SegmentMetadata(segmentHash));
-        }
-        return segmentsToSaveMap;
-    }
-
     public void readSegmentsFromDisk() {
 
     }
-
 }

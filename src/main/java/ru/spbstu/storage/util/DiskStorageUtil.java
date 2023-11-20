@@ -19,7 +19,7 @@ public class DiskStorageUtil {
     }
 
     public static Path ofCompressed(@NotNull String fileName) {
-        return COMPRESSED_DATA_PATH.resolve(Objects.requireNonNull(fileName));
+        return COMPRESSED_DATA_PATH.resolve(Objects.requireNonNull(fileName) + COMPRESSED_FILE_POSTFIX);
     }
 
     public static Path ofDecompressed(@NotNull String fileName) {
