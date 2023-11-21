@@ -3,10 +3,14 @@ package ru.spbstu.storage.executor;
 import org.jetbrains.annotations.NotNull;
 import ru.spbstu.exception.StorageException;
 
+import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 public class DataBaseRequestExecutor {
@@ -17,12 +21,52 @@ public class DataBaseRequestExecutor {
         this.connection = Objects.requireNonNull(connection);
     }
 
-    public int executeUpdate(@NotNull String updateQuery,
-                             @NotNull PreparedStatementUpdater preparedStatementUpdater) {
+    public <T> Array createArray(@NotNull String type,
+                                 @NotNull T[] array) throws SQLException {
+        return connection.createArrayOf(type, array);
+    }
+
+    public List<Integer> executeCreate(@NotNull String updateQuery,
+                                       @NotNull PreparedStatementUpdater preparedStatementUpdater) {
         Objects.requireNonNull(updateQuery);
-        try (PreparedStatement prepareStatement = connection.prepareStatement(updateQuery)) {
+        try (PreparedStatement prepareStatement
+                     = connection.prepareStatement(updateQuery, Statement.RETURN_GENERATED_KEYS)) {
+            connection.setAutoCommit(false);
             preparedStatementUpdater.update(prepareStatement);
-            return prepareStatement.executeUpdate(updateQuery);
+            prepareStatement.executeBatch();
+            List<Integer> generatedIds = collectGeneratedIds(prepareStatement);
+            connection.commit();
+            connection.setAutoCommit(true);
+            return generatedIds;
+        } catch (SQLException ex) {
+            throw new StorageException(String.format("Fail to execute update, query: %s", updateQuery), ex);
+        }
+    }
+
+    private List<Integer> collectGeneratedIds(@NotNull PreparedStatement preparedStatement) {
+        List<Integer> generatedIds = new ArrayList<>();
+        try (ResultSet generatedKeysResultSet = preparedStatement.getGeneratedKeys()) {
+            while (generatedKeysResultSet.next()) {
+                int metadataId = generatedKeysResultSet.getInt(1);
+                generatedIds.add(metadataId);
+            }
+        } catch (SQLException e) {
+            throw new StorageException("Failed to collect generated ids",  e);
+        }
+        return generatedIds;
+    }
+
+
+    public void executeUpdate(@NotNull String updateQuery,
+                              @NotNull PreparedStatementUpdater preparedStatementUpdater) {
+        Objects.requireNonNull(updateQuery);
+        try (PreparedStatement prepareStatement
+                     = connection.prepareStatement(updateQuery, Statement.RETURN_GENERATED_KEYS)) {
+            connection.setAutoCommit(false);
+            preparedStatementUpdater.update(prepareStatement);
+            prepareStatement.executeBatch();
+            connection.commit();
+            connection.setAutoCommit(true);
         } catch (SQLException ex) {
             throw new StorageException(String.format("Fail to execute update, query: %s", updateQuery), ex);
         }
@@ -36,7 +80,7 @@ public class DataBaseRequestExecutor {
         Objects.requireNonNull(rowReader);
         try (PreparedStatement prepareStatement = connection.prepareStatement(query)) {
             preparedStatementUpdater.update(prepareStatement);
-            prepareStatement.executeQuery(query);
+            prepareStatement.executeQuery();
             try (ResultSet resultSet = prepareStatement.getResultSet()){
                 return rowReader.handle(resultSet);
             }

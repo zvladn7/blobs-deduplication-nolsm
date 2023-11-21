@@ -1,7 +1,6 @@
 package ru.spbstu.model;
 
 import org.jetbrains.annotations.NotNull;
-import org.thymeleaf.util.StringUtils;
 
 public class SegmentMetadata {
 
@@ -53,7 +52,7 @@ public class SegmentMetadata {
     }
 
     public boolean isUnknown() {
-        return StringUtils.equals(fileName, FILE_UNKNOWN_NAME) && fileOffset == FILE_UNKNOWN_OFFSET;
+        return FILE_UNKNOWN_NAME.equals(fileName) && fileOffset == FILE_UNKNOWN_OFFSET;
     }
 
     public int getId() {

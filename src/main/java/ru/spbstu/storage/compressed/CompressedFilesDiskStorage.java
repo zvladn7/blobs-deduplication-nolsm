@@ -22,12 +22,12 @@ public class CompressedFilesDiskStorage {
 
     /**
      * compressed file format:
-     * |segment size in bytes|segments count|segment0|segment1|segment2|...
+     * |segment size in bytes|segments count|file size in bytes|segment0|segment1|segment2|...
      */
     public void saveCompressedDataFile(@NotNull String fileName,
                                        @NotNull List<MemorySegmentWithHash> memorySegmentWithHashes,
                                        @NotNull Map<String, SegmentMetadata> segmentsToUpdateInDBMap) throws IOException {
-        int compressedDataSize = memorySegmentWithHashes.size() * Integer.BYTES;
+        int compressedDataSize = memorySegmentWithHashes.size() * Integer.BYTES + 2 * Long.BYTES + Integer.BYTES;
 
         try (FileChannel fileChannel = FileChannel.open(
                 DiskStorageUtil.ofCompressed(fileName),
@@ -67,6 +67,7 @@ public class CompressedFilesDiskStorage {
                 fileSegment.set(ValueLayout.JAVA_INT_UNALIGNED, dataOffset, segmentId);
                 dataOffset += Integer.BYTES;
             }
+            fileSegment.force();
         }
     }
 
@@ -80,13 +81,13 @@ public class CompressedFilesDiskStorage {
 
             long segmentSizeInBytes = memorySegment.get(ValueLayout.JAVA_LONG_UNALIGNED, 0);
             int segmentsCount = memorySegment.get(ValueLayout.JAVA_INT_UNALIGNED, Long.BYTES);
-            long fileSizeInBytes = memorySegment.get(ValueLayout.JAVA_LONG_UNALIGNED, Long.BYTES + Integer.BYTES);
+            long fileSizeInBytes = memorySegment.get(ValueLayout.JAVA_LONG_UNALIGNED, Long.BYTES + (long) Integer.BYTES);
             List<Integer> metadataIds = new ArrayList<>(segmentsCount);
-            int baseOffset = 2 * Long.BYTES + Integer.BYTES;
+            int dataOffset = 2 * Long.BYTES + Integer.BYTES;
             for (int offsetIdx = 0; offsetIdx < segmentsCount; ++offsetIdx) {
-                int dataOffset = baseOffset + offsetIdx * Integer.BYTES;
                 int metadataId = memorySegment.get(ValueLayout.JAVA_INT_UNALIGNED, dataOffset);
                 metadataIds.add(metadataId);
+                dataOffset += Integer.BYTES;
             }
             if (segmentsCount != metadataIds.size()) {
                 throw new StorageException(
@@ -94,20 +95,6 @@ public class CompressedFilesDiskStorage {
             }
             return new CompressedFileInfo(compressedFilePath.getFileName().toString(), segmentSizeInBytes, segmentsCount, fileSizeInBytes, metadataIds);
         }
-    }
-
-    public void decompressStoredFile(@NotNull CompressedFileInfo compressedFileInfo,
-                                     @NotNull Map<Integer, SegmentMetadata> idToMetadataMap) {
-        String s = compressedFileInfo.compressedFileName();
-        List<Integer> metadataIds = compressedFileInfo.metadataIds();
-        long segmentSizeInBytes = compressedFileInfo.segmentSizeInBytes();
-        long fileSizeInBytes = compressedFileInfo.fileSizeInBytes();
-
-//        try (FileChannel fileChannel = FileChannel.open(
-//
-//        )) {
-//
-//        }
     }
 
 }

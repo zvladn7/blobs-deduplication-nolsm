@@ -5,10 +5,16 @@ import ru.spbstu.exception.StorageException;
 import ru.spbstu.hash.MemorySegmentWithHash;
 import ru.spbstu.model.SegmentMetadata;
 import ru.spbstu.model.SegmentsMetadataToStore;
+import ru.spbstu.storage.compressed.CompressedFileInfo;
 import ru.spbstu.storage.segments.SegmentsDiskStorage;
+import ru.spbstu.storage.util.DiskStorageUtil;
 
 import java.io.IOException;
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -38,7 +44,7 @@ public class SegmentStorageService {
         try {
             hashToSegmentStoredOnDisk = diskStorage.saveNewSegmentsOnDisk(segmentsToWriteOnDiskMetadataList, hashToMemorySegmentMap);
         } catch (IOException e) {
-            throw new StorageException("Fail to store segments on disk");
+            throw new StorageException("Fail to store segments on disk", e);
         }
         return segmentsMetadataToStore.getNewSegmentsMap().entrySet().stream()
                 .map(entry -> {
@@ -58,6 +64,25 @@ public class SegmentStorageService {
                         Map.Entry::getKey,
                         Map.Entry::getValue
                 ));
+    }
+
+    public void restore(@NotNull CompressedFileInfo compressedFileInfo,
+                        @NotNull Map<Integer, SegmentMetadata> idToMetadataMap) {
+        String fileNameFromCompressed = DiskStorageUtil.getFileNameFromCompressed(compressedFileInfo.compressedFileName());
+        Path decompressedFilePath = DiskStorageUtil.ofDecompressed(fileNameFromCompressed);
+        try (FileChannel fileChannel = FileChannel.open(
+                decompressedFilePath,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.READ,
+                StandardOpenOption.CREATE);
+             Arena writeArena = Arena.ofConfined()
+        ) {
+            MemorySegment decompressedFileMemorySegment = fileChannel.map(
+                    FileChannel.MapMode.READ_WRITE, 0, compressedFileInfo.fileSizeInBytes(), writeArena);
+            diskStorage.decompressFile(decompressedFileMemorySegment, compressedFileInfo, idToMetadataMap);
+        } catch (IOException e) {
+            throw new StorageException(String.format("Fail to restore fail: %s", fileNameFromCompressed), e);
+        }
     }
 
 }

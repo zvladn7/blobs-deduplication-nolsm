@@ -1,7 +1,8 @@
 package ru.spbstu.storage.metadata;
 
+import com.google.common.base.Joiner;
 import org.jetbrains.annotations.NotNull;
-import org.thymeleaf.util.Validate;
+import ru.spbstu.exception.StorageException;
 import ru.spbstu.model.SegmentMetadata;
 import ru.spbstu.storage.executor.DataBaseRequestExecutor;
 import ru.spbstu.storage.executor.DefaultPreparedStatementUpdater;
@@ -10,6 +11,7 @@ import java.sql.Connection;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.StringJoiner;
 import java.util.stream.Collectors;
 
 import static ru.spbstu.storage.metadata.SegmentMetadataTable.C_FILE_NAME;
@@ -21,7 +23,7 @@ import static ru.spbstu.storage.metadata.SegmentMetadataTable.TABLE_NAME;
 
 public class SegmentMetadataDAO {
 
-    private static final String INSERT_STMT = "INSERT INTO " + TABLE_NAME + "(" +
+    private static final String INSERT_STMT = "INSERT INTO " + TABLE_NAME + " (" +
             C_HASH + ", " +
             C_FILE_NAME + ", " +
             C_FILE_OFFSET + ", " +
@@ -34,8 +36,8 @@ public class SegmentMetadataDAO {
 
 
     private static final String QUERY_METADATA = "SELECT * FROM " + TABLE_NAME;
-    private static final String QUERY_METADATA_BY_IDS = QUERY_METADATA + "WHERE id in (?)";
-    private static final String QUERY_METADATA_BY_HASHES = QUERY_METADATA + "WHERE hash in (?)";
+    private static final String QUERY_METADATA_BY_IDS = QUERY_METADATA + " WHERE id = ANY (?)";
+    private static final String QUERY_METADATA_BY_HASHES = QUERY_METADATA + " WHERE hash = ANY (?)";
 
     public final DataBaseRequestExecutor dbRequestExecutor;
 
@@ -43,25 +45,34 @@ public class SegmentMetadataDAO {
         this.dbRequestExecutor = new DataBaseRequestExecutor(connection);
     }
 
-    public void create(@NotNull SegmentMetadata metadata) {
-        Objects.requireNonNull(metadata);
-        int updated = dbRequestExecutor.executeUpdate(INSERT_STMT, ps -> {
-            ps.setString(1, metadata.getHash());
-            ps.setString(2, metadata.getFileName());
-            ps.setLong(3, metadata.getFileOffset());
-            ps.setInt(4, metadata.getReferences());
+    public void createBatch(@NotNull List<SegmentMetadata> metadataList) {
+        Objects.requireNonNull(metadataList);
+        List<Integer> generatedIds = dbRequestExecutor.executeCreate(INSERT_STMT, ps -> {
+            for (SegmentMetadata metadata : metadataList) {
+                ps.setString(1, metadata.getHash());
+                ps.setString(2, metadata.getFileName());
+                ps.setLong(3, metadata.getFileOffset());
+                ps.setInt(4, metadata.getReferences());
+                ps.addBatch();
+            }
         });
-        Validate.isTrue(updated == 1, String.format("Metadata [%s} wasn't inserted", metadata));
+        if (generatedIds.size() != metadataList.size()) {
+            throw new StorageException("Generated ids size isn't equals to metadata list size");
+        }
+        for (int idx = 0; idx < generatedIds.size(); ++idx) {
+            Integer metadataId = generatedIds.get(idx);
+            metadataList.get(idx).setId(metadataId);
+        }
     }
-
-    public void updateReferenceCount(int id,
-                                     int newReferenceCount) {
-        int updated = dbRequestExecutor.executeUpdate(UPDATE_REFERENCE_COUNT_STMT, ps -> {
-            ps.setInt(1, newReferenceCount);
-            ps.setInt(2, id);
+    public void updateBatchReferenceCount(@NotNull Collection<SegmentMetadata> metadataList) {
+        Objects.requireNonNull(metadataList);
+        dbRequestExecutor.executeUpdate(UPDATE_REFERENCE_COUNT_STMT, ps -> {
+            for (SegmentMetadata metadata : metadataList) {
+                ps.setInt(1, metadata.getReferences());
+                ps.setInt(2, metadata.getId());
+                ps.addBatch();
+            }
         });
-        Validate.isTrue(updated == 1,
-                String.format("Metadata %d wasn't updated, references=%d", id, newReferenceCount));
     }
 
     @NotNull
@@ -75,22 +86,25 @@ public class SegmentMetadataDAO {
 
     @NotNull
     public List<SegmentMetadata> findAllByIds(@NotNull Collection<Integer> metadataIds) {
-        String metadataIdsString = Objects.requireNonNull(metadataIds).stream()
-                .map(String::valueOf)
-                .collect(Collectors.joining(","));
         return dbRequestExecutor.executeQuery(
                 QUERY_METADATA_BY_IDS,
-                ps -> ps.setString(1, metadataIdsString),
+                ps -> ps.setArray(
+                        1,
+                        dbRequestExecutor.createArray("INTEGER", metadataIds.toArray())
+                ),
                 SegmentMetadataRowReader.INSTANCE
         );
     }
 
     @NotNull
     public List<SegmentMetadata> findAllByHashes(@NotNull Collection<String> metadataHashes) {
-        String metadataHashesString = String.join(",", metadataHashes);
+
         return dbRequestExecutor.executeQuery(
                 QUERY_METADATA_BY_HASHES,
-                ps -> ps.setString(1, metadataHashesString),
+                ps -> ps.setArray(
+                        1,
+                        dbRequestExecutor.createArray("VARCHAR", metadataHashes.toArray())
+                ),
                 SegmentMetadataRowReader.INSTANCE
         );
     }

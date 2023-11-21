@@ -13,7 +13,7 @@ import java.util.List;
 
 public class SegmentUtil {
 
-    private static final int SEGMENT_SIZE_IN_BYTES = 4;
+    private static final int SEGMENT_SIZE_IN_BYTES = 64;
 
     private SegmentUtil() {}
 

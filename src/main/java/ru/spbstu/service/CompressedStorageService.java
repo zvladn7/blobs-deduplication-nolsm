@@ -4,6 +4,7 @@ import org.jetbrains.annotations.NotNull;
 import ru.spbstu.exception.StorageException;
 import ru.spbstu.hash.MemorySegmentWithHash;
 import ru.spbstu.model.SegmentMetadata;
+import ru.spbstu.storage.compressed.CompressedFileInfo;
 import ru.spbstu.storage.compressed.CompressedFilesDiskStorage;
 
 import java.io.IOException;
@@ -20,14 +21,23 @@ public class CompressedStorageService {
         this.diskStorage = Objects.requireNonNull(diskStorage);
     }
 
-    public void save(@NotNull Path path,
-                     @NotNull List<MemorySegmentWithHash> memorySegmentWithHashes,
-                     @NotNull Map<String, SegmentMetadata> allHashToMetadataMap) {
+    public void store(@NotNull Path path,
+                      @NotNull List<MemorySegmentWithHash> memorySegmentWithHashes,
+                      @NotNull Map<String, SegmentMetadata> allHashToMetadataMap) {
         try {
             diskStorage.saveCompressedDataFile(path.getFileName().toString(), memorySegmentWithHashes, allHashToMetadataMap);
         } catch (IOException e) {
             throw new StorageException(
-                    String.format("Fail to save compressed file %s to storage", path.getFileName().toString()));
+                    String.format("Fail to save compressed file %s to storage", path.getFileName().toString()), e);
+        }
+    }
+
+    public CompressedFileInfo readCompressedFileInfo(@NotNull String fileName) {
+        try {
+            return diskStorage.readCompressedFileInfo(fileName);
+        } catch (IOException e) {
+            throw new StorageException(
+                    String.format("Fail to read compressed file %s from storage", fileName));
         }
     }
 

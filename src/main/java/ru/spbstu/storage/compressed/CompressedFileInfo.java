@@ -1,12 +1,10 @@
 package ru.spbstu.storage.compressed;
 
-import org.jetbrains.annotations.NotNull;
-
 import java.util.List;
 
-public record CompressedFileInfo(@NotNull String compressedFileName,
+public record CompressedFileInfo(String compressedFileName,
                                  long segmentSizeInBytes,
                                  int segmentsCount,
                                  long fileSizeInBytes,
-                                 @NotNull List<Integer> metadataIds) {
+                                 List<Integer> metadataIds) {
 }

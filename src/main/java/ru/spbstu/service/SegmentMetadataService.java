@@ -23,24 +23,14 @@ public class SegmentMetadataService {
         this.dao = Objects.requireNonNull(dao);
     }
 
-    public void create(@NotNull Collection<SegmentMetadata> metadataList) {
+    public void create(@NotNull List<SegmentMetadata> metadataList) {
         Objects.requireNonNull(metadataList);
-        for (SegmentMetadata segmentMetadata : metadataList) {
-            dao.create(segmentMetadata);
-        }
+        dao.createBatch(metadataList);
     }
 
     public void updateReferenceCount(@NotNull Collection<SegmentMetadata> metadataList) {
         Objects.requireNonNull(metadataList);
-        for (SegmentMetadata segmentMetadata : metadataList) {
-            if (segmentMetadata.isUnknown()) {
-                throw new StorageException(
-                        String.format("Metadata cannot be unknown on data update, id=%d", segmentMetadata.getId()));
-            }
-            int id = segmentMetadata.getId();
-            int newReferenceCount = segmentMetadata.getReferences();
-            dao.updateReferenceCount(id, newReferenceCount);
-        }
+        dao.updateBatchReferenceCount(metadataList);
     }
 
     @NotNull

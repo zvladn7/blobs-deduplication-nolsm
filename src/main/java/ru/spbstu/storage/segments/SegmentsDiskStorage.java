@@ -1,13 +1,11 @@
 package ru.spbstu.storage.segments;
 
 import org.jetbrains.annotations.NotNull;
-import org.springframework.stereotype.Component;
 import ru.spbstu.exception.StorageException;
 import ru.spbstu.model.SegmentMetadata;
+import ru.spbstu.storage.compressed.CompressedFileInfo;
 import ru.spbstu.storage.util.DiskStorageUtil;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -24,9 +22,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
-@Component
 public class SegmentsDiskStorage {
 
     private static final Path INDEX = DiskStorageUtil.ofSegment("index.idx");
@@ -35,13 +31,11 @@ public class SegmentsDiskStorage {
     private final Arena arena = Arena.ofConfined();
     private volatile Map<String, MemorySegment> segmentsMap;
 
-    @PostConstruct
-    public void init() throws IOException {
+    public SegmentsDiskStorage() throws IOException {
         this.segmentsMap = load(arena);
     }
 
-    @PreDestroy
-    public void destroy() {
+    public void close() {
         if (!arena.scope().isAlive()) {
             return;
         }
@@ -114,7 +108,7 @@ public class SegmentsDiskStorage {
             for (SegmentMetadata segmentMetadata : segmentMetadatas) {
                 String hash = segmentMetadata.getHash();
                 MemorySegment nextSegment = hashToBytesSegmentMap.get(hash);
-                MemorySegment.copy(nextSegment, 0, fileSegment, 0, nextSegment.byteSize());
+                MemorySegment.copy(nextSegment, 0, fileSegment, dataOffset, nextSegment.byteSize());
 
                 segmentMetadata.setFileName(newFileName);
                 segmentMetadata.setFileOffset(dataOffset);
@@ -144,7 +138,42 @@ public class SegmentsDiskStorage {
         return result;
     }
 
-    public void readSegmentsFromDisk() {
-
+    public void decompressFile(@NotNull MemorySegment decompressedFileMemorySegment,
+                               @NotNull CompressedFileInfo compressedFileInfo,
+                               @NotNull Map<Integer, SegmentMetadata> idToMetadataMap) {
+        List<Integer> metadataIds = compressedFileInfo.metadataIds();
+        long segmentSizeInBytes = compressedFileInfo.segmentSizeInBytes();
+        long fileSizeInBytes = compressedFileInfo.fileSizeInBytes();
+        long decompressedFileOffset = 0;
+        int count = 0;
+        for (Integer metadataId : metadataIds) {
+            try {
+                SegmentMetadata segmentMetadata = idToMetadataMap.get(metadataId);
+                String srcSegmentFileName = segmentMetadata.getFileName();
+                long srcSegmentOffset = segmentMetadata.getFileOffset();
+                MemorySegment srcSegment = segmentsMap.get(srcSegmentFileName);
+                long currentSegmentSizeInBytes;
+                if (decompressedFileOffset + segmentSizeInBytes > fileSizeInBytes) {
+                    currentSegmentSizeInBytes = fileSizeInBytes - decompressedFileOffset;
+                    System.out.println(currentSegmentSizeInBytes);
+                } else {
+                    currentSegmentSizeInBytes = segmentSizeInBytes;
+                }
+                MemorySegment.copy(
+                        srcSegment,
+                        srcSegmentOffset,
+                        decompressedFileMemorySegment,
+                        decompressedFileOffset,
+                        currentSegmentSizeInBytes
+                );
+                decompressedFileOffset += currentSegmentSizeInBytes;
+                count++;
+            } catch (RuntimeException e) {
+                System.out.println("metadataId: " + metadataId + ", metadataIds: " + metadataIds.size() + ", count: " + count);
+                throw new StorageException("", e);
+            }
+        }
+        System.out.println(decompressedFileOffset);
     }
+
 }

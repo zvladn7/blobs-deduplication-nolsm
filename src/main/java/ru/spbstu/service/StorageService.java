@@ -3,8 +3,6 @@ package ru.spbstu.service;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
 import ru.spbstu.exception.StorageException;
 import ru.spbstu.hash.HashType;
 import ru.spbstu.hash.SegmentUtil;
@@ -12,18 +10,18 @@ import ru.spbstu.hash.SegmentHashUtil;
 import ru.spbstu.hash.MemorySegmentWithHash;
 import ru.spbstu.model.SegmentMetadata;
 import ru.spbstu.model.SegmentsMetadataToStore;
+import ru.spbstu.storage.compressed.CompressedFileInfo;
+import ru.spbstu.storage.util.DiskStorageUtil;
 
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
-@Component
 public class StorageService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StorageService.class);
@@ -40,8 +38,8 @@ public class StorageService {
         this.compressedStorageService = Objects.requireNonNull(compressedStorageService);
     }
 
-    public void save(@NotNull Path path,
-                     @NotNull HashType hashType) {
+    public void store(@NotNull Path path,
+                      @NotNull HashType hashType) {
         // Разбили файл на сегменты и посчитали хеш для каждого сегмента
         final List<MemorySegmentWithHash> memorySegmentWithHashes = getHashToBytesSegmentMap(path, hashType);
 
@@ -55,12 +53,20 @@ public class StorageService {
         segmentsMetadataToStore = segmentsMetadataToStore.updateNewSegmentsMap(updatedNewSegmentsMetadataMap);
 
         // Записали мета-данные о новых сегментах на диск
-        segmentMetadataService.create(segmentsMetadataToStore.getNewSegmentsMap().values());
+        segmentMetadataService.create(new ArrayList<>(segmentsMetadataToStore.getNewSegmentsMap().values()));
         // Обновили мета-данные по уже существующим
         segmentMetadataService.updateReferenceCount(segmentsMetadataToStore.getAlreadyExistedSegmentsMap().values());
 
+//        List<String> newSegmentHashes = segmentsMetadataToStore.getNewSegmentsMap().values().stream()
+//                .map(SegmentMetadata::getHash)
+//                .toList();
+//
+//        // У новых сегментов нет id в SegmentMetadata, поэтому запрашиваем сегменты.
+//        updatedNewSegmentsMetadataMap = segmentMetadataService.findByHashes(newSegmentHashes);
+//        segmentsMetadataToStore = segmentsMetadataToStore.updateNewSegmentsMap(updatedNewSegmentsMetadataMap);
+
         // Записали сжатый файл на диск.
-        compressedStorageService.save(path, memorySegmentWithHashes, segmentsMetadataToStore.getAllHashToMetadataMap());
+        compressedStorageService.store(path, memorySegmentWithHashes, segmentsMetadataToStore.getAllHashToMetadataMap());
     }
 
     private List<MemorySegment> getFileSegments(@NotNull Path path) {
@@ -83,12 +89,14 @@ public class StorageService {
 
     private static void logSegmentsToStore(@NotNull SegmentsMetadataToStore segmentsMetadataToStore) {
         Objects.requireNonNull(segmentsMetadataToStore);
-        LOGGER.info("duplicate segments: {}", segmentsMetadataToStore.getDuplicateSegments());
-        LOGGER.info("reused from db segments: {}", segmentsMetadataToStore.getReusedFromDBSegments());
-        Map<String, SegmentMetadata> newSegmentsMap = segmentsMetadataToStore.getNewSegmentsMap();
-        LOGGER.info("new segments: [{}}", newSegmentsMap.keySet());
-        Map<String, SegmentMetadata> alreadyExistedSegmentsMap = segmentsMetadataToStore.getAlreadyExistedSegmentsMap();
-        LOGGER.info("new segments: [{}}", alreadyExistedSegmentsMap.keySet());
+        System.out.println("duplicate segments: " + segmentsMetadataToStore.getDuplicateSegments());
+        System.out.println("reused from db segments: " + segmentsMetadataToStore.getReusedFromDBSegments());
     }
 
+    public void restore(@NotNull String fileName) {
+        Objects.requireNonNull(fileName);
+        CompressedFileInfo compressedFileInfo = compressedStorageService.readCompressedFileInfo(fileName);
+        Map<Integer, SegmentMetadata> idToMetadataMap = segmentMetadataService.findByIds(compressedFileInfo.metadataIds());
+        segmentStorageService.restore(compressedFileInfo, idToMetadataMap);
+    }
 }
