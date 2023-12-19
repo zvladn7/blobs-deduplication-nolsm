@@ -9,8 +9,15 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class SegmentHashUtil {
+
+    private static final ExecutorService executorService
+            = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() / 2);
 
     private SegmentHashUtil() {}
 
@@ -21,6 +28,7 @@ public class SegmentHashUtil {
         Objects.requireNonNull(hashType);
         MessageDigest md5 = MessageDigest.getInstance(hashType.getAlgorithm());
         List<MemorySegmentWithHash> results = new ArrayList<>(fileByteSegments.size());
+//        List<Future<MemorySegment>> futures = new ArrayList<>(fileByteSegments.size());
         for (MemorySegment fileByteSegment : fileByteSegments) {
             md5.update(fileByteSegment.toArray(ValueLayout.OfByte.JAVA_BYTE));
             byte[] digest = md5.digest();

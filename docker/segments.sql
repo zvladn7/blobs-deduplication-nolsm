@@ -6,4 +6,4 @@ CREATE TABLE segments_metadata (
     reference    integer      not null
 );
 
-create index on segments_metadata using hash(hash);
+--create index on segments_metadata using hash(hash);

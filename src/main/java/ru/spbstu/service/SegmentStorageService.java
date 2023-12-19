@@ -16,6 +16,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,10 @@ public class SegmentStorageService {
                         (m1, m2) -> m1,
                         HashMap::new
                 ));
+
+        if (segmentsToWriteOnDiskMetadataList.size() == 0) {
+            return Collections.emptyMap();
+        }
 
         Map<String, SegmentMetadata> hashToSegmentStoredOnDisk;
         try {

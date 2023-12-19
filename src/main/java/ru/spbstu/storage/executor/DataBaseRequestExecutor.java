@@ -19,6 +19,11 @@ public class DataBaseRequestExecutor {
 
     public DataBaseRequestExecutor(@NotNull Connection connection) {
         this.connection = Objects.requireNonNull(connection);
+        try {
+            connection.setAutoCommit(false);
+        } catch (SQLException e) {
+            throw new StorageException("", e);
+        }
     }
 
     public <T> Array createArray(@NotNull String type,
@@ -31,12 +36,10 @@ public class DataBaseRequestExecutor {
         Objects.requireNonNull(updateQuery);
         try (PreparedStatement prepareStatement
                      = connection.prepareStatement(updateQuery, Statement.RETURN_GENERATED_KEYS)) {
-            connection.setAutoCommit(false);
             preparedStatementUpdater.update(prepareStatement);
             prepareStatement.executeBatch();
             List<Integer> generatedIds = collectGeneratedIds(prepareStatement);
             connection.commit();
-            connection.setAutoCommit(true);
             return generatedIds;
         } catch (SQLException ex) {
             throw new StorageException(String.format("Fail to execute update, query: %s", updateQuery), ex);
@@ -62,11 +65,9 @@ public class DataBaseRequestExecutor {
         Objects.requireNonNull(updateQuery);
         try (PreparedStatement prepareStatement
                      = connection.prepareStatement(updateQuery, Statement.RETURN_GENERATED_KEYS)) {
-            connection.setAutoCommit(false);
             preparedStatementUpdater.update(prepareStatement);
             prepareStatement.executeBatch();
             connection.commit();
-            connection.setAutoCommit(true);
         } catch (SQLException ex) {
             throw new StorageException(String.format("Fail to execute update, query: %s", updateQuery), ex);
         }

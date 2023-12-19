@@ -13,5 +13,6 @@ public class DefaultPreparedStatementUpdater implements PreparedStatementUpdater
 
     @Override
     public void update(@NotNull PreparedStatement preparedStatement) {
+        // no action required
     }
 }

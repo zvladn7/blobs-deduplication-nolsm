@@ -155,7 +155,7 @@ public class SegmentsDiskStorage {
                 long currentSegmentSizeInBytes;
                 if (decompressedFileOffset + segmentSizeInBytes > fileSizeInBytes) {
                     currentSegmentSizeInBytes = fileSizeInBytes - decompressedFileOffset;
-                    System.out.println(currentSegmentSizeInBytes);
+//                    System.out.println(currentSegmentSizeInBytes);
                 } else {
                     currentSegmentSizeInBytes = segmentSizeInBytes;
                 }
@@ -173,7 +173,7 @@ public class SegmentsDiskStorage {
                 throw new StorageException("", e);
             }
         }
-        System.out.println(decompressedFileOffset);
+//        System.out.println(decompressedFileOffset);
     }
 
 }

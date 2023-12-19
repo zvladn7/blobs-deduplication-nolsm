@@ -6,7 +6,8 @@ import java.util.Objects;
 
 public enum HashType {
     SHA256("SHA-256"),
-    SHA512("SHA-512");
+    SHA512("SHA-512"),
+    MD5("MD5");
 
     private final String algorithm;
 
